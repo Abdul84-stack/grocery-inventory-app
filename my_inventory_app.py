@@ -139,13 +139,13 @@ st.markdown("""
     }
     .stButton > button:hover {
         background-color: #0056b3; /* Darker blue on hover */
-        box-shadow: 0 6px 15px rgba(0, 123, 255, 0.4);
+        box_shadow: 0 6px 15px rgba(0, 123, 255, 0.4);
         transform: translateY(-2px);
     }
     .stButton > button:active {
         background-color: #004085;
         transform: translateY(0);
-        box-shadow: 0 2px 5px rgba(0, 123, 255, 0.5);
+        box_shadow: 0 2px 5px rgba(0, 123, 255, 0.5);
     }
     /* Specific styling for the icon buttons in Administrative Services, if they were used again */
     div[data-testid="stColumn"] .stButton > button {
@@ -166,7 +166,7 @@ st.markdown("""
     div[data-testid="stColumn"] .stButton > button:hover {
         background-color: #e2e6ea;
         transform: translateY(-2px);
-        box-shadow: 0 4px 8px (0,0,0,0.1);
+        box_shadow: 0 4px 8px (0,0,0,0.1);
     }
     div[data-testid="stColumn"] .stButton > button .icon { /* Targeting the emoji/icon within the button */
         font-size: 2.5em; /* Adjust icon size */
@@ -416,7 +416,7 @@ if 'operating_expenses' not in st.session_state:
 
 
 # Initialize the shopping cart and receipt history
-if 'cart' not in st.session_state:
+if 'cart' not in st.session_state: # Corrected from 'current_cart'
     st.session_state.cart = [] # List of dictionaries: {'SKU', 'Product Name', 'Quantity', 'Unit Price', 'Subtotal'}
 if 'receipt_history' not in st.session_state:
     st.session_state.receipt_history = [] # List of generated receipts (strings/markdown)
@@ -912,7 +912,7 @@ elif selected_page == "Point of Sale": # New POS section
     st.markdown('<div class="section-header">💰 Point of Sale (POS)</div>', unsafe_allow_html=True)
 
     # Initialize cart in session state if not present
-    if 'current_cart' not in st.session_state:
+    if 'cart' not in st.session_state: # Corrected from 'current_cart'
         st.session_state.cart = [] # {'SKU', 'Product Name', 'Quantity', 'Unit Price', 'Subtotal'}
     
     col_input, col_cart = st.columns([1, 1.5]) # Two columns for input and cart display
@@ -986,7 +986,7 @@ elif selected_page == "Point of Sale": # New POS section
             total_cart_amount = cart_df['Subtotal'].sum()
             st.markdown(f"### **Total Amount: ₦{total_cart_amount:.2f}**")
 
-            col_finalize, col_clear, col_print_placeholder = st.columns(3)
+            col_finalize, col_clear, col_print_download = st.columns(3) # Adjusted column for print and download
             with col_finalize:
                 if st.button("Finalize Sale & Generate Receipt", key="finalize_sale_btn"):
                     sale_successful = True
@@ -1025,15 +1025,27 @@ elif selected_page == "Point of Sale": # New POS section
     if st.session_state.last_receipt:
         st.subheader("Last Generated Receipt:")
         st.markdown(st.session_state.last_receipt, unsafe_allow_html=True)
-        if st.button("Print This Receipt", key="print_last_receipt_btn"):
-            st.components.v1.html(
-                """
-                <script>
-                    window.print();
-                </script>
-                """,
-                height=0,
-                width=0
+        
+        col_print, col_download = st.columns(2) # New columns for print and download buttons
+        with col_print:
+            if st.button("Print This Receipt", key="print_last_receipt_btn"):
+                st.components.v1.html(
+                    """
+                    <script>
+                        window.print();
+                    </script>
+                    """,
+                    height=0,
+                    width=0
+                )
+        with col_download:
+            # Download as HTML, user can then print to PDF from browser
+            st.download_button(
+                label="Download Receipt as HTML",
+                data=st.session_state.last_receipt,
+                file_name=f"receipt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                mime="text/html",
+                key="download_receipt_html_btn"
             )
 
 
@@ -1320,221 +1332,206 @@ elif selected_page == "Analytics & Reports":
         else:
             st.info(f"No purchase transactions recorded yet for {st.session_state.current_store}.")
 
-    with report_tabs[2]: # Cost of Sales Report (Profit/Loss) Tab
-        st.subheader(f"Cost of Sales (Profit/Loss) Report for {st.session_state.current_store}")
-        sales_transactions_for_profit = filtered_transactions[filtered_transactions['Type'] == 'Sale'].copy()
+    with report_tabs[2]: # Cost of Sales / COGS Report Tab
+        st.subheader(f"Cost of Sales (COGS) Report for {st.session_state.current_store}")
+        cogs_transactions = filtered_transactions[filtered_transactions['Type'] == 'Sale'].copy() # COGS is tied to sales
 
-        if not sales_transactions_for_profit.empty:
-            total_revenue_profit = sales_transactions_for_profit['Revenue (₦)'].sum()
-            total_cogs_profit = sales_transactions_for_profit['Cost of Goods Sold (₦)'].sum()
-            total_profit = sales_transactions_for_profit['Profit/Loss (₦)'].sum()
+        if not cogs_transactions.empty:
+            total_cogs = cogs_transactions['Cost of Goods Sold (₦)'].sum()
 
-            col_profit_rev, col_profit_cogs, col_profit_total = st.columns(3)
-            with col_profit_rev:
-                st.markdown(f"""
-                <div class="report-card blue">
-                    <div class="value">₦{total_revenue_profit:,.2f}</div>
-                    <div class="label">Total Revenue</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_cogs:
-                st.markdown(f"""
-                <div class="report-card red">
-                    <div class="value">₦{total_cogs_profit:,.2f}</div>
-                    <div class="label">Total Cost of Sales</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_profit_total:
-                card_class = "green" if total_profit >= 0 else "red"
-                st.markdown(f"""
-                <div class="report-card {card_class}">
-                    <div class="value">₦{total_profit:,.2f}</div>
-                    <div class="label">Total Profit/Loss</div>
-                </div>
-                """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="report-card red">
+                <div class="value">₦{total_cogs:,.2f}</div>
+                <div class="label">Total Cost of Sales (COGS)</div>
+            </div>
+            """, unsafe_allow_html=True)
 
             st.markdown("---")
-            st.subheader("Detailed Profit/Loss Transactions")
-            profit_loss_report_df = sales_transactions_for_profit[[
-                'Timestamp', 'Product Name', 'Quantity Change', 'Selling Price (₦)',
-                'Cost Price (₦)', 'Revenue (₦)', 'Cost of Goods Sold (₦)', 'Profit/Loss (₦)'
-            ]].copy()
-            profit_loss_report_df.rename(columns={'Quantity Change': 'Quantity Sold'}, inplace=True)
-            profit_loss_report_df['Quantity Sold'] = profit_loss_report_df['Quantity Sold'].abs()
+            st.subheader("Detailed Cost of Sales Transactions")
+            cogs_report_df = cogs_transactions[['Timestamp', 'Product Name', 'Quantity Change', 'Cost Price (₦)', 'Cost of Goods Sold (₦)']].copy()
+            cogs_report_df.rename(columns={'Quantity Change': 'Quantity Sold'}, inplace=True)
+            cogs_report_df['Quantity Sold'] = cogs_report_df['Quantity Sold'].abs() # Display as positive quantity
             
-            st.dataframe(profit_loss_report_df.sort_values(by='Timestamp', ascending=False), use_container_width=True)
+            st.dataframe(cogs_report_df.sort_values(by='Timestamp', ascending=False), use_container_width=True)
 
-            csv = to_excel(profit_loss_report_df)
+            csv = to_excel(cogs_report_df)
             st.download_button(
                 label="Download Cost of Sales Report as Excel",
                 data=csv,
                 file_name=f"cost_of_sales_report_{st.session_state.current_store.replace(' ', '_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_cogs_sales_excel"
+                key="download_cogs_excel"
             )
         else:
-            st.info(f"No sales transactions available to generate a Cost of Sales Report for {st.session_state.current_store}.")
-
-    with report_tabs[3]: # Overall Profit/Loss Report Tab (for selected store)
+            st.info(f"No sales (and thus no Cost of Sales) transactions recorded yet for {st.session_state.current_store}.")
+            
+    with report_tabs[3]: # Overall Profit/Loss Report (Current Store)
         st.subheader(f"Overall Profit/Loss Report for {st.session_state.current_store}")
+
+        sales_for_profit = filtered_transactions[filtered_transactions['Type'] == 'Sale'].copy()
         
-        # Calculate total revenue for the selected store
-        total_revenue_overall = filtered_transactions[filtered_transactions['Type'] == 'Sale']['Revenue (₦)'].sum()
-        
-        # Calculate total cost of goods sold for the selected store
-        total_cogs_overall = filtered_transactions[filtered_transactions['Type'] == 'Sale']['Cost of Goods Sold (₦)'].sum()
+        if not sales_for_profit.empty or not filtered_expenses.empty:
+            gross_profit = sales_for_profit['Profit/Loss (₦)'].sum() # This is the "Gross Profit" from sales
+            total_operating_expenses = filtered_expenses['Amount (₦)'].sum()
+            net_profit_loss = gross_profit - total_operating_expenses
 
-        # Calculate total operating expenses for the selected store
-        total_operating_expenses_overall = filtered_expenses['Amount (₦)'].sum()
+            col_gross_profit, col_net_profit = st.columns(2)
+            with col_gross_profit:
+                st.markdown(f"""
+                <div class="report-card {'green' if gross_profit >= 0 else 'red'}">
+                    <div class="value">₦{gross_profit:,.2f}</div>
+                    <div class="label">Gross Profit (Sales)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_net_profit:
+                st.markdown(f"""
+                <div class="report-card {'green' if net_profit_loss >= 0 else 'red'}">
+                    <div class="value">₦{net_profit_loss:,.2f}</div>
+                    <div class="label">Net Profit/Loss (After Expenses)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            st.subheader("Summary Breakdown")
+            st.write(f"**Total Sales Revenue:** ₦{sales_for_profit['Revenue (₦)'].sum():,.2f}")
+            st.write(f"**Total Cost of Goods Sold (COGS):** ₦{sales_for_profit['Cost of Goods Sold (₦)'].sum():,.2f}")
+            st.write(f"**Total Operating Expenses:** ₦{total_operating_expenses:,.2f}")
 
-        gross_profit = total_revenue_overall - total_cogs_overall
-        net_profit = gross_profit - total_operating_expenses_overall
+            profit_loss_data = {
+                'Metric': ['Total Sales Revenue', 'Total Cost of Goods Sold (COGS)', 'Gross Profit', 'Total Operating Expenses', 'Net Profit/Loss'],
+                'Amount (₦)': [
+                    sales_for_profit['Revenue (₦)'].sum(),
+                    sales_for_profit['Cost of Goods Sold (₦)'].sum(),
+                    gross_profit,
+                    total_operating_expenses,
+                    net_profit_loss
+                ]
+            }
+            profit_loss_df = pd.DataFrame(profit_loss_data)
+            st.dataframe(profit_loss_df, hide_index=True, use_container_width=True)
 
-        col_rev_overall, col_cogs_overall, col_exp_overall, col_profit_overall = st.columns(4)
+            csv = to_excel(profit_loss_df)
+            st.download_button(
+                label="Download Profit/Loss Report (Current Store) as Excel",
+                data=csv,
+                file_name=f"profit_loss_report_{st.session_state.current_store.replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_profit_loss_current_store_excel"
+            )
 
-        with col_rev_overall:
-            st.markdown(f"""
-            <div class="report-card blue">
-                <div class="value">₦{total_revenue_overall:,.2f}</div>
-                <div class="label">Total Revenue</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_cogs_overall:
-            st.markdown(f"""
-            <div class="report-card red">
-                <div class="value">₦{total_cogs_overall:,.2f}</div>
-                <div class="label">Total COGS</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_exp_overall:
-            st.markdown(f"""
-            <div class="report-card red">
-                <div class="value">₦{total_operating_expenses_overall:,.2f}</div>
-                <div class="label">Total Op. Expenses</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_profit_overall:
-            card_class = "green" if net_profit >= 0 else "red"
-            st.markdown(f"""
-            <div class="report-card {card_class}">
-                <div class="value">₦{net_profit:,.2f}</div>
-                <div class="label">Net Profit/Loss</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.subheader("Breakdown")
-        st.write(f"**Gross Profit:** ₦{gross_profit:,.2f}")
-        st.write(f"**Net Profit/Loss:** ₦{net_profit:,.2f}")
+        else:
+            st.info(f"No sales or operating expenses recorded yet for {st.session_state.current_store} to generate a Profit/Loss Report.")
 
-        # You might want to generate a DataFrame for this summary if needed for download
-        overall_profit_loss_data = {
-            'Metric': ['Total Revenue', 'Total Cost of Goods Sold', 'Gross Profit', 'Total Operating Expenses', 'Net Profit/Loss'],
-            'Amount (₦)': [total_revenue_overall, total_cogs_overall, gross_profit, total_operating_expenses_overall, net_profit]
-        }
-        overall_profit_loss_df = pd.DataFrame(overall_profit_loss_data)
-        st.dataframe(overall_profit_loss_df, hide_index=True, use_container_width=True)
 
-        csv_overall_pl = to_excel(overall_profit_loss_df)
-        st.download_button(
-            label="Download Overall Profit/Loss Report as Excel",
-            data=csv_overall_pl,
-            file_name=f"overall_profit_loss_report_{st.session_state.current_store.replace(' ', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_overall_pl_excel"
-        )
-        
-        if total_revenue_overall == 0 and total_cogs_overall == 0 and total_operating_expenses_overall == 0:
-            st.info(f"No financial data (sales or expenses) recorded yet for {st.session_state.current_store} to generate an overall profit/loss report.")
+    with report_tabs[4]: # Group Report (All Stores)
+        st.subheader("Group Report: Consolidated Sales, Cost, and Profit Across All Stores")
 
-    with report_tabs[4]: # NEW: Group Report (All Stores)
-        st.subheader("Group Report (All Stores)")
-        
-        # Calculate total revenue across all stores
-        total_revenue_group = st.session_state.transactions[st.session_state.transactions['Type'] == 'Sale']['Revenue (₦)'].sum()
-        
-        # Calculate total cost of goods sold across all stores
-        total_cogs_group = st.session_state.transactions[st.session_state.transactions['Type'] == 'Sale']['Cost of Goods Sold (₦)'].sum()
+        all_sales_transactions = st.session_state.transactions[st.session_state.transactions['Type'] == 'Sale'].copy()
+        all_operating_expenses = st.session_state.operating_expenses.copy()
 
-        # Calculate total operating expenses across all stores
-        total_operating_expenses_group = st.session_state.operating_expenses['Amount (₦)'].sum()
+        if not all_sales_transactions.empty or not all_operating_expenses.empty:
+            # Aggregate by store for sales
+            sales_by_store = all_sales_transactions.groupby('Store').agg(
+                Total_Revenue=('Revenue (₦)', 'sum'),
+                Total_COGS=('Cost of Goods Sold (₦)', 'sum'),
+                Gross_Profit=('Profit/Loss (₦)', 'sum')
+            ).reset_index()
 
-        gross_profit_group = total_revenue_group - total_cogs_group
-        net_profit_group = gross_profit_group - total_operating_expenses_group
+            # Aggregate by store for expenses
+            expenses_by_store = all_operating_expenses.groupby('Store').agg(
+                Total_Expenses=('Amount (₦)', 'sum')
+            ).reset_index()
 
-        col_rev_group, col_cogs_group, col_exp_group, col_profit_group = st.columns(4)
+            # Merge sales and expenses data
+            group_report_df = pd.merge(sales_by_store, expenses_by_store, on='Store', how='outer').fillna(0)
 
-        with col_rev_group:
-            st.markdown(f"""
-            <div class="report-card blue">
-                <div class="value">₦{total_revenue_group:,.2f}</div>
-                <div class="label">Total Group Revenue</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_cogs_group:
-            st.markdown(f"""
-            <div class="report-card red">
-                <div class="value">₦{total_cogs_group:,.2f}</div>
-                <div class="label">Total Group COGS</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_exp_group:
-            st.markdown(f"""
-            <div class="report-card red">
-                <div class="value">₦{total_operating_expenses_group:,.2f}</div>
-                <div class="label">Total Group Op. Expenses</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_profit_group:
-            card_class = "green" if net_profit_group >= 0 else "red"
-            st.markdown(f"""
-            <div class="report-card {card_class}">
-                <div class="value">₦{net_profit_group:,.2f}</div>
-                <div class="label">Total Group Net Profit/Loss</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.subheader("Group Breakdown")
-        st.write(f"**Total Group Gross Profit:** ₦{gross_profit_group:,.2f}")
-        st.write(f"**Total Group Net Profit/Loss:** ₦{net_profit_group:,.2f}")
+            # Calculate Net Profit/Loss for each store
+            group_report_df['Net Profit/Loss'] = group_report_df['Gross_Profit'] - group_report_df['Total_Expenses']
+            
+            st.dataframe(group_report_df, use_container_width=True, hide_index=True)
 
-        # DataFrame for Group Report download
-        group_profit_loss_data = {
-            'Metric': ['Total Group Revenue', 'Total Group Cost of Goods Sold', 'Total Group Gross Profit', 'Total Group Operating Expenses', 'Total Group Net Profit/Loss'],
-            'Amount (₦)': [total_revenue_group, total_cogs_group, gross_profit_group, total_operating_expenses_group, net_profit_group]
-        }
-        group_profit_loss_df = pd.DataFrame(group_profit_loss_data)
-        st.dataframe(group_profit_loss_df, hide_index=True, use_container_width=True)
+            st.markdown("---")
+            st.subheader("Overall Group Totals:")
 
-        csv_group_pl = to_excel(group_profit_loss_df)
-        st.download_button(
-            label="Download Group Profit/Loss Report as Excel",
-            data=csv_group_pl,
-            file_name="group_profit_loss_report_all_stores.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_group_pl_excel"
-        )
+            overall_total_revenue = group_report_df['Total_Revenue'].sum()
+            overall_total_cogs = group_report_df['Total_COGS'].sum()
+            overall_gross_profit = group_report_df['Gross_Profit'].sum()
+            overall_total_expenses = group_report_df['Total_Expenses'].sum()
+            overall_net_profit_loss = overall_gross_profit - overall_total_expenses
 
-        if total_revenue_group == 0 and total_cogs_group == 0 and total_operating_expenses_group == 0:
-            st.info("No financial data (sales or expenses) recorded across all stores yet to generate a group profit/loss report.")
+            col_group_revenue, col_group_gross_profit, col_group_net_profit = st.columns(3)
+            with col_group_revenue:
+                st.markdown(f"""
+                <div class="report-card blue">
+                    <div class="value">₦{overall_total_revenue:,.2f}</div>
+                    <div class="label">Group Total Revenue</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_group_gross_profit:
+                st.markdown(f"""
+                <div class="report-card {'green' if overall_gross_profit >= 0 else 'red'}">
+                    <div class="value">₦{overall_gross_profit:,.2f}</div>
+                    <div class="label">Group Gross Profit</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with col_group_net_profit:
+                st.markdown(f"""
+                <div class="report-card {'green' if overall_net_profit_loss >= 0 else 'red'}">
+                    <div class="value">₦{overall_net_profit_loss:,.2f}</div>
+                    <div class="label">Group Net Profit/Loss</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            group_summary_data = {
+                'Metric': ['Overall Total Sales Revenue', 'Overall Total Cost of Goods Sold (COGS)', 'Overall Gross Profit', 'Overall Total Operating Expenses', 'Overall Net Profit/Loss'],
+                'Amount (₦)': [
+                    overall_total_revenue,
+                    overall_total_cogs,
+                    overall_gross_profit,
+                    overall_total_expenses,
+                    overall_net_profit_loss
+                ]
+            }
+            group_summary_df = pd.DataFrame(group_summary_data)
+            st.dataframe(group_summary_df, hide_index=True, use_container_width=True)
+
+            csv = to_excel(group_report_df)
+            st.download_button(
+                label="Download Group Report as Excel",
+                data=csv,
+                file_name=f"group_profit_loss_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_group_report_excel"
+            )
+
+        else:
+            st.info("No sales or operating expenses recorded across all stores to generate a Group Report.")
 
 
 elif selected_page == "About":
     st.markdown('<div class="section-header">ℹ️ About This Application</div>', unsafe_allow_html=True)
     st.write("""
-    This is a simple inventory management application built with Streamlit, designed for a small grocery store.
-    It allows for basic product tracking, stock adjustments, and provides low stock alerts.
+    This is a **Grocery Inventory Management System** designed to help small businesses,
+    especially grocery stores and supermarkets, efficiently manage their stock, track sales,
+    monitor expenses, and generate insightful reports.
 
-    **Features:**
-    * **Multi-Store Support:** Manage inventory, sales, and expenses for multiple store locations.
-    * **Dashboard:** Overview of inventory status with key metrics and visual insights, including stock health and category distribution, specific to the selected store.
-    * **Manage Products:** Add new products, view/edit existing ones, and **bulk upload purchases** in an an interactive table, all filtered by the selected store. Supports 'Unit of Measure', 'Reorder Point', 'Selling Price', 'Cost Price', and 'Expiry Date'.
-    * **Point of Sale (POS):** A dedicated interface for customer sales, allowing multiple item selection, automatic total calculation, and receipt generation with print/PDF options, specific to the selected store.
-    * **Record Transactions:** Log individual sales and stock deliveries (purchases), including updating cost prices for purchases, specific to the selected store.
-    * **Operating Expenses:** A new section to track and report daily operational expenses like rent, salaries, utilities, etc., specific to the selected store.
-    * **Expiry Alerts:** Identifies products that have expired or are nearing their expiry date, with customizable alert periods per product, specific to the selected store.
-    * **Low Stock Alerts:** Identifies products needing reordering, categorized by urgency (Low and Critical Stock), specific to the selected store.
+    **Key Features:**
+
+    * **Multi-Store Support:** Manage inventory, sales, and expenses across multiple store locations.
+    * **Product Management:** Add, view, and update product details including SKU, name, quantity,
+        prices (cost and selling), reorder points, and expiry dates.
+    * **Bulk Product Upload:** Easily add or update multiple products using CSV or Excel files,
+        which intelligently adds to existing stock and updates cost prices for purchases.
+    * **Point of Sale (POS):** A streamlined interface to process sales, add products to a cart,
+        and generate receipts.
+    * **Transaction Logging:** Automatically records all sales and stock deliveries (purchases),
+        including updating cost prices for purchases, specific to the selected store.
+    * **Operating Expenses:** A new section to track and report daily operational expenses like
+        rent, salaries, utilities, etc., specific to the selected store.
+    * **Expiry Alerts:** Identifies products that have expired or are nearing their expiry date,
+        with customizable alert periods per product, specific to the selected store.
+    * **Low Stock Alerts:** Identifies products needing reordering, categorized by urgency (Low and Critical Stock),
+        specific to the selected store.
     * **Analytics & Reports:** Generate comprehensive reports on sales, cost of goods bought, and profit/loss, including:
         * Individual store reports (Sales, Cost of Goods Bought, Cost of Sales/Profit for current store).
         * An **Overall Profit/Loss Report** for the currently selected store.
