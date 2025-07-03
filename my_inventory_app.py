@@ -193,7 +193,7 @@ st.markdown("""
     .stDataFrame {
         border-radius: 8px;
         overflow: hidden; /* Ensures rounded corners apply to the whole table */
-        box_shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
     }
     /* Messages (success, error, info) */
     .stAlert {
@@ -391,7 +391,6 @@ st.markdown("""
 
 
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 """, unsafe_allow_html=True)
 
 # --- Initialize Inventory Data ---
@@ -408,43 +407,16 @@ if 'inventory' not in st.session_state:
             {"SKU": "PROD008", "Product Name": "Gala Sausage", "Unit": "Units", "Category": "Snacks", "Quantity": 24, "Unit Price (₦)": 250.00, "Cost Price (₦)": 180.00, "Reorder Point": 5, "Expiry Date": datetime(2025, 6, 29).date(), "Last Updated": datetime.now(), "Store": "Branch B"}, # This one is near expiry
         ]
     )
-
 if 'transactions' not in st.session_state:
-    # Explicitly define columns and their data types for 'transactions' DataFrame
-    # This helps Pandas understand the schema from the start and avoids FutureWarning.
-    transactions_columns = [
-        'Timestamp', 'SKU', 'Product Name', 'Quantity Change', 'Type',
-        'Selling Price (₦)', 'Cost Price (₦)', 'Revenue (₦)',
-        'Cost of Goods Sold (₦)', 'Cost of Goods Bought (₦)', 'Profit/Loss (₦)',
-        'New Quantity', 'Store'
-    ]
-    st.session_state.transactions = pd.DataFrame(columns=transactions_columns)
-
-    # Convert columns to their intended dtypes
-    st.session_state.transactions['Timestamp'] = pd.to_datetime(st.session_state.transactions['Timestamp'])
-    # Numeric columns are set to float to gracefully handle potential NaN values or mixed types,
-    # as Pandas often promotes integers to floats when NaNs are introduced.
-    st.session_state.transactions['Quantity Change'] = st.session_state.transactions['Quantity Change'].astype(float)
-    st.session_state.transactions['Selling Price (₦)'] = st.session_state.transactions['Selling Price (₦)'].astype(float)
-    st.session_state.transactions['Cost Price (₦)'] = st.session_state.transactions['Cost Price (₦)'].astype(float)
-    st.session_state.transactions['Revenue (₦)'] = st.session_state.transactions['Revenue (₦)'].astype(float)
-    st.session_state.transactions['Cost of Goods Sold (₦)'] = st.session_state.transactions['Cost of Goods Sold (₦)'].astype(float)
-    st.session_state.transactions['Cost of Goods Bought (₦)'] = st.session_state.transactions['Cost of Goods Bought (₦)'].astype(float)
-    st.session_state.transactions['Profit/Loss (₦)'] = st.session_state.transactions['Profit/Loss (₦)'].astype(float)
-    st.session_state.transactions['New Quantity'] = st.session_state.transactions['New Quantity'].astype(float)
-
+    st.session_state.transactions = pd.DataFrame(columns=['Timestamp', 'SKU', 'Product Name', 'Quantity Change', 'Type', 'Selling Price (₦)', 'Cost Price (₦)', 'Revenue (₦)', 'Cost of Goods Sold (₦)', 'Profit/Loss (₦)', 'New Quantity', 'Store'])
 
 # Initialize a new DataFrame for operating expenses
 if 'operating_expenses' not in st.session_state:
-    # Define columns and their expected dtypes explicitly for 'operating_expenses' DataFrame
-    expenses_columns = ['Date', 'Category', 'Description', 'Amount (₦)', 'Store']
-    st.session_state.operating_expenses = pd.DataFrame(columns=expenses_columns)
-    st.session_state.operating_expenses['Date'] = pd.to_datetime(st.session_state.operating_expenses['Date'])
-    st.session_state.operating_expenses['Amount (₦)'] = st.session_state.operating_expenses['Amount (₦)'].astype(float)
+    st.session_state.operating_expenses = pd.DataFrame(columns=['Date', 'Category', 'Description', 'Amount (₦)', 'Store'])
 
 
 # Initialize the shopping cart and receipt history
-if 'cart' not in st.session_state:
+if 'cart' not in st.session_state: # Corrected from 'current_cart'
     st.session_state.cart = [] # List of dictionaries: {'SKU', 'Product Name', 'Quantity', 'Unit Price', 'Subtotal'}
 if 'receipt_history' not in st.session_state:
     st.session_state.receipt_history = [] # List of generated receipts (strings/markdown)
@@ -551,10 +523,7 @@ def update_stock(sku, change_quantity, transaction_type, store, selling_price=0.
             'Store': store # Assign to the selected store
         }
 
-        # The loop below is no longer strictly necessary to avoid the FutureWarning
-        # if the DataFrame is initialized with explicit dtypes, but it doesn't hurt.
-        # It ensures that if a brand new column (not in initial_columns) were added
-        # via new_transaction_data, it would get added to the main DF.
+        # Ensure all columns exist before concatenating
         for col in new_transaction_data.keys():
             if col not in st.session_state.transactions.columns:
                 st.session_state.transactions[col] = pd.Series(dtype=type(new_transaction_data[col]))
@@ -782,456 +751,364 @@ if selected_page == "Dashboard":
 elif selected_page == "Manage Products":
     st.markdown('<div class="section-header">📦 Manage Products</div>', unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["View All Products", "Add New Product", "Bulk Upload Products"]) # Added new tab
+    st.subheader("Add New Product")
+    with st.form("add_product_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            sku = st.text_input("SKU (Unique Identifier)", max_chars=20).strip()
+            product_name = st.text_input("Product Name").strip()
+            category = st.selectbox("Category", filtered_inventory['Category'].unique().tolist() + ["New Category"] if not filtered_inventory.empty else ["New Category"])
+            if category == "New Category":
+                new_category = st.text_input("Enter New Category Name").strip()
+                if new_category:
+                    category = new_category
+                else:
+                    st.warning("Please enter a new category name or select an existing one.")
+                    st.stop()
+            quantity = st.number_input("Quantity", min_value=0, step=1)
+        with col2:
+            unit = st.text_input("Unit (e.g., Kg, Liters, Pcs)").strip()
+            selling_price = st.number_input("Unit Price (₦)", min_value=0.0, format="%.2f")
+            cost_price = st.number_input("Cost Price (₦)", min_value=0.0, format="%.2f", help="The cost at which you purchase this product.")
+            reorder_point = st.number_input("Reorder Point", min_value=0, step=1, help="Quantity at which to reorder this product.")
+            expiry_date = st.date_input("Expiry Date", min_value=datetime.now().date())
+        
+        add_product_submitted = st.form_submit_button("Add Product")
+        if add_product_submitted:
+            if sku and product_name and unit and category and quantity >= 0 and selling_price >= 0 and cost_price >= 0 and reorder_point >= 0 and expiry_date:
+                if add_product(sku, product_name, unit, category, quantity, selling_price, cost_price, reorder_point, expiry_date, st.session_state.current_store):
+                    st.rerun() # Rerun to update the displayed inventory
+            else:
+                st.error("Please fill in all product details correctly.")
 
-    with tab1:
-        st.subheader(f"All Products in Inventory for {st.session_state.current_store}")
-        edited_df = st.data_editor(
-            filtered_inventory,
-            key="product_editor",
+    st.subheader("Current Inventory")
+    if not filtered_inventory.empty:
+        # Create a copy for editing to avoid SettingWithCopyWarning
+        edited_inventory_df = st.data_editor(
+            filtered_inventory.copy(),
+            num_rows="dynamic",
             use_container_width=True,
             column_config={
-                "SKU": st.column_config.Column("SKU (Product No.)", help="Unique identifier for the product/back code", width="small", disabled=True),
-                "Product Name": st.column_config.TextColumn("Product Name", help="Name of the product"),
-                "Unit": st.column_config.TextColumn("Unit of Measure", help="e.g., kg, Units, Liters"),
-                "Category": st.column_config.SelectboxColumn("Category", options=["Produce", "Dairy", "Bakery", "Meat", "Seafood", "Pantry", "Snacks", "Beverages", "Frozen", "Household", "Personal Care", "Other"]),
-                "Quantity": st.column_config.NumberColumn("Quantity", help="Current stock quantity", min_value=0, format="%d"),
-                "Unit Price (₦)": st.column_config.NumberColumn("Unit Price (₦)", help="Price per unit in Naira", min_value=0.01, format="%.2f"),
-                "Cost Price (₦)": st.column_config.NumberColumn("Cost Price (₦)", help="Cost price per unit in Naira", min_value=0.00, format="%.2f"),
-                "Reorder Point": st.column_config.NumberColumn("Reorder Point", help="Quantity at which to reorder", min_value=0, format="%d"),
-                "Expiry Date": st.column_config.DateColumn("Expiry Date", help="Date the product expires", format="YYYY-MM-DD"),
-                "Last Updated": st.column_config.DatetimeColumn("Last Updated", format="YYYY-MM-DD HH:mm:ss", disabled=True)
+                "SKU": st.column_config.TextColumn("SKU", help="Unique identifier for the product.", required=True),
+                "Product Name": st.column_config.TextColumn("Product Name", required=True),
+                "Unit": st.column_config.TextColumn("Unit", required=True),
+                "Category": st.column_config.TextColumn("Category", required=True),
+                "Quantity": st.column_config.NumberColumn("Quantity", min_value=0, format="%d", required=True),
+                "Unit Price (₦)": st.column_config.NumberColumn("Unit Price (₦)", min_value=0.0, format="%.2f", required=True),
+                "Cost Price (₦)": st.column_config.NumberColumn("Cost Price (₦)", min_value=0.0, format="%.2f", required=True, help="Cost price of the product"), # Make cost price editable
+                "Reorder Point": st.column_config.NumberColumn("Reorder Point", min_value=0, format="%d", required=True),
+                "Expiry Date": st.column_config.DateColumn("Expiry Date", min_value=datetime.now().date()),
+                "Last Updated": st.column_config.DatetimeColumn("Last Updated", format="YYYY-MM-DD HH:mm:ss", disabled=True),
+                "Store": st.column_config.TextColumn("Store", disabled=True), # Store column should not be editable
             },
-            num_rows="dynamic"
+            key="inventory_data_editor"
         )
-        if not edited_df.equals(filtered_inventory):
-            # Update only the relevant rows in the main inventory DataFrame
-            st.session_state.inventory = pd.concat([st.session_state.inventory[st.session_state.inventory['Store'] != st.session_state.current_store], edited_df], ignore_index=True)
-            # Ensure 'Last Updated' is updated for any manual edits
-            st.session_state.inventory.loc[st.session_state.inventory['Store'] == st.session_state.current_store, 'Last Updated'] = datetime.now()
-            st.success("Inventory updated!")
-            st.rerun()
 
-    with tab2:
-        st.subheader(f"Add New Product for {st.session_state.current_store}")
-        with st.form("add_product_form"):
-            new_sku = st.text_input("Product SKU (Back Code - Unique Identifier)", help="e.g., PROD001, Milo45kg").strip()
-            new_name = st.text_input("Product Name", placeholder="e.g., Fuji Apples, Fresh Milk").strip()
-            new_unit = st.text_input("Unit of Measure", placeholder="e.g., kg, Units, Liters").strip()
-            new_category = st.selectbox("Category", ["Produce", "Dairy", "Bakery", "Meat", "Seafood", "Pantry", "Snacks", "Beverages", "Frozen", "Household", "Personal Care", "Other"])
-            new_quantity = st.number_input("Initial Quantity", min_value=0, value=0)
-            new_selling_price = st.number_input("Unit Selling Price (₦)", min_value=0.01, format="%.2f")
-            new_cost_price = st.number_input("Initial Cost Price (₦)", min_value=0.00, format="%.2f", help="The cost at which you buy this product.")
-            new_reorder_point = st.number_input("Reorder Point", min_value=0, value=0, help="Quantity at which to trigger a reorder alert.")
-            new_expiry_date = st.date_input("Expiry Date", value=datetime.now().date() + timedelta(days=365))
+        if st.button("Save Inventory Changes", key="save_inventory_button"):
+            # Validate edited data before saving
+            valid_changes = True
+            for index, row in edited_inventory_df.iterrows():
+                # Check for empty strings in critical fields
+                if not all([row['SKU'], row['Product Name'], row['Unit'], row['Category']]):
+                    st.error(f"Row {index+1}: SKU, Product Name, Unit, and Category cannot be empty.")
+                    valid_changes = False
+                    break
+                # Check for non-negative numbers
+                if not all([row['Quantity'] >= 0, row['Unit Price (₦)'] >= 0, row['Cost Price (₦)'] >= 0, row['Reorder Point'] >= 0]):
+                    st.error(f"Row {index+1}: Quantity, Unit Price, Cost Price, and Reorder Point must be non-negative.")
+                    valid_changes = False
+                    break
+                # Check for valid date
+                if not isinstance(row['Expiry Date'], (datetime, pd.Timestamp)) or pd.isna(row['Expiry Date']):
+                    st.error(f"Row {index+1}: Expiry Date must be a valid date.")
+                    valid_changes = False
+                    break
 
-            add_submitted = st.form_submit_button("Add Product")
-            if add_submitted:
-                if new_sku and new_name and new_unit and new_quantity >= 0 and new_selling_price > 0 and new_cost_price >= 0:
-                    if add_product(new_sku, new_name, new_unit, new_category, new_quantity, new_selling_price, new_cost_price, new_reorder_point, new_expiry_date, st.session_state.current_store):
-                        st.rerun()
-                else:
-                    st.error("Please fill in all required fields (SKU, Product Name, Unit, Quantity, Unit Selling Price, Initial Cost Price, Reorder Point, Expiry Date) and ensure valid values.")
+            if valid_changes:
+                # Update the original session state inventory, preserving other stores' data
+                # Identify SKUs present in the current store's inventory before changes
+                current_store_skus = st.session_state.inventory[st.session_state.inventory['Store'] == st.session_state.current_store]['SKU'].tolist()
 
-    with tab3: # Bulk Upload Products Tab
-        st.subheader(f"Bulk Upload Products (CSV/Excel) for {st.session_state.current_store}")
-        st.info("""
-        Upload a CSV or Excel file with your new purchased items.
-        The file should contain the following columns (case-insensitive, exact spelling is recommended):
-        - `SKU` (mandatory, unique identifier)
-        - `Product Name` (mandatory)
-        - `Quantity` (mandatory, integer)
-        - `Unit Price (₦)` (mandatory, numeric - selling price)
-        - `Cost Price (₦)` (mandatory, numeric - purchase cost)
-        - `Unit` (optional, e.g., 'kg', 'Units')
-        - `Category` (optional)
-        - `Reorder Point` (optional, integer)
-        - `Expiry Date` (optional,YYYY-MM-DD format)
-
-        If an `SKU` already exists in the current store, its `Quantity` will be *added to* the current stock, and its `Cost Price (₦)` will be *updated to* the value in the uploaded file.
-        """)
-
-        uploaded_file = st.file_uploader("Choose a CSV or Excel file", type=["csv", "xlsx"])
-
-        if uploaded_file is not None:
-            try:
-                if uploaded_file.name.endswith('.csv'):
-                    uploaded_df = pd.read_csv(uploaded_file)
-                else: # .xlsx
-                    uploaded_df = pd.read_excel(uploaded_file)
-
-                st.write("Preview of Uploaded Data:")
-                st.dataframe(uploaded_df, use_container_width=True)
-
-                if st.button("Process Uploaded Products"):
-                    required_columns = ['SKU', 'Product Name', 'Quantity', 'Unit Price (₦)', 'Cost Price (₦)']
-                    # Check for required columns (case-insensitive)
-                    uploaded_columns_lower = [col.lower() for col in uploaded_df.columns]
-                    missing_columns = [col for col in required_columns if col.lower() not in uploaded_columns_lower]
-
-                    if missing_columns:
-                        st.error(f"Missing required columns in the uploaded file: {', '.join(missing_columns)}")
-                    else:
-                        success_count = 0
-                        update_count = 0
-                        add_count = 0
-                        errors = []
-
-                        # Normalize column names to match internal dataframe
-                        uploaded_df.columns = [col.replace(' (₦)', ' (₦)') for col in uploaded_df.columns]
-                        uploaded_df.columns = [col.replace(' (N)', ' (₦)') for col in uploaded_df.columns] # Handle N if user uses it
-
-                        for index, row in uploaded_df.iterrows():
-                            sku = str(row['SKU']).strip().upper()
-                            product_name = str(row['Product Name']).strip()
-                            quantity_to_add = int(row['Quantity'])
-                            selling_price = float(row['Unit Price (₦)'])
-                            cost_price = float(row['Cost Price (₦)'])
-                            
-                            unit = str(row.get('Unit', 'Units')).strip()
-                            category = str(row.get('Category', 'Other')).strip()
-                            reorder_point = int(row.get('Reorder Point', 0))
-                            
-                            expiry_date_val = row.get('Expiry Date')
-                            if pd.isna(expiry_date_val):
-                                expiry_date = datetime.now().date() + timedelta(days=365*5) # Default to 5 years if not provided
-                            else:
-                                try:
-                                    if isinstance(expiry_date_val, datetime):
-                                        expiry_date = expiry_date_val.date()
-                                    else:
-                                        expiry_date = pd.to_datetime(expiry_date_val).date()
-                                except Exception:
-                                    expiry_date = datetime.now().date() + timedelta(days=365*5) # Fallback on error
+                # Remove old data for the current store
+                st.session_state.inventory = st.session_state.inventory[st.session_state.inventory['Store'] != st.session_state.current_store]
+                
+                # Add updated data, ensuring 'Last Updated' is current for modified rows
+                # Only update 'Last Updated' for rows that were actually changed or are new
+                # This simple approach updates all rows that pass through the data editor for the current store
+                edited_inventory_df['Last Updated'] = datetime.now() # Update timestamp for all saved rows
+                st.session_state.inventory = pd.concat([st.session_state.inventory, edited_inventory_df], ignore_index=True)
+                
+                st.success("Inventory updated successfully!")
+                st.rerun()
+            else:
+                st.error("Please correct the errors in the inventory table before saving.")
+    else:
+        st.info("No products in inventory for this store. Add new products above.")
 
 
-                            existing_product_idx = st.session_state.inventory[(st.session_state.inventory['SKU'] == sku) & (st.session_state.inventory['Store'] == st.session_state.current_store)].index
+elif selected_page == "Point of Sale":
+    st.markdown('<div class="section-header">🛒 Point of Sale</div>', unsafe_allow_html=True)
 
-                            if not existing_product_idx.empty:
-                                # Product exists, update quantity and cost price for the current store
-                                current_inventory_qty = st.session_state.inventory.loc[existing_product_idx[0], 'Quantity']
-                                st.session_state.inventory.loc[existing_product_idx[0], 'Quantity'] = current_inventory_qty + quantity_to_add
-                                st.session_state.inventory.loc[existing_product_idx[0], 'Cost Price (₦)'] = cost_price # Update to new purchase cost
-                                st.session_state.inventory.loc[existing_product_idx[0], 'Last Updated'] = datetime.now()
-                                
-                                # Record purchase transaction for the update
-                                update_stock(sku, quantity_to_add, "Purchase (Stock In)", st.session_state.current_store, purchase_cost_price=cost_price)
-                                update_count += 1
-                            else:
-                                # New product, add to inventory for the current store
-                                # Use the add_product helper function
-                                if add_product(sku, product_name, unit, category, quantity_to_add, selling_price, cost_price, reorder_point, expiry_date, st.session_state.current_store):
-                                    # Manually record the initial purchase transaction for new products
-                                    update_stock(sku, quantity_to_add, "Purchase (Stock In)", st.session_state.current_store, purchase_cost_price=cost_price)
-                                    add_count += 1
-                                else:
-                                    errors.append(f"Failed to add new product {product_name} (SKU: {sku})")
-                            success_count += 1
-                        
-                        st.success(f"Processed {success_count} rows: {add_count} new products added, {update_count} existing products updated for {st.session_state.current_store}.")
-                        if errors:
-                            st.error("Errors encountered during processing:\n" + "\n".join(errors))
-                        st.rerun()
+    col1, col2 = st.columns([2, 1])
 
-            except Exception as e:
-                st.error(f"Error reading file or processing data: {e}. Please ensure the file format and column names are correct.")
-        else:
-            st.info(f"Upload a CSV or Excel file to begin bulk processing for {st.session_state.current_store}.")
+    with col1:
+        st.subheader(f"Products Available in {st.session_state.current_store}")
+        if not filtered_inventory.empty:
+            # Display products with current stock for selection
+            products_for_sale = filtered_inventory[['SKU', 'Product Name', 'Quantity', 'Unit Price (₦)']].copy()
+            products_for_sale.rename(columns={'Unit Price (₦)': 'Price (₦)'}, inplace=True)
+            st.dataframe(products_for_sale, use_container_width=True, hide_index=True)
 
-
-elif selected_page == "Point of Sale": # New POS section
-    st.markdown('<div class="section-header">💰 Point of Sale (POS)</div>', unsafe_allow_html=True)
-
-    # Initialize cart in session state if not present
-    if 'current_cart' not in st.session_state:
-        st.session_state.cart = [] # {'SKU', 'Product Name', 'Quantity', 'Unit Price', 'Subtotal'}
-    
-    col_input, col_cart = st.columns([1, 1.5]) # Two columns for input and cart display
-
-    with col_input:
-        st.subheader(f"Add Item to Cart ({st.session_state.current_store})")
-        # Creating product options with SKU and Product Name for cleaner dropdown
-        product_options = filtered_inventory.apply(lambda row: f"{row['SKU']} - {row['Product Name']}", axis=1).tolist()
-        
-        if not product_options:
-            st.warning(f"No products in inventory for {st.session_state.current_store} to sell. Please add products first under 'Manage Products'.")
-            selected_product_display_name = None # Ensure it's None if no options
-            selected_sku_pos = None
-        else:
-            # Set initial index for selectbox to ensure a value is selected
-            default_index = 0
-            # Ensure default_index is valid for product_options
-            if default_index >= len(product_options):
-                default_index = 0 if product_options else -1
-
-            selected_product_display_name = st.selectbox(
-                "Select Product:",
-                product_options,
-                index=default_index,
+            st.write("---")
+            st.subheader("Add Item to Cart")
+            
+            # Use unique keys for selectbox and number_input
+            selected_product_name = st.selectbox(
+                "Select Product",
+                products_for_sale['Product Name'].tolist(),
                 key="pos_product_select"
             )
             
-            # Extract SKU from the selected option
-            selected_sku_pos = selected_product_display_name.split(' - ')[0] if selected_product_display_name else None
+            if selected_product_name:
+                selected_product_data = filtered_inventory[filtered_inventory['Product Name'] == selected_product_name].iloc[0]
+                available_quantity = selected_product_data['Quantity']
+                unit_price = selected_product_data['Unit Price (₦)']
 
-            # Get details of the selected product
-            product_details = filtered_inventory[filtered_inventory['SKU'].str.upper() == selected_sku_pos.upper()]
-            
-            if not product_details.empty:
-                product_details = product_details.iloc[0]
-                available_qty = int(product_details['Quantity'])
-                unit_selling_price = product_details['Unit Price (₦)'] # Renamed for clarity
+                st.info(f"Selected: **{selected_product_name}** | Available: **{available_quantity}** units | Unit Price: **₦{unit_price:.2f}**")
                 
-                st.info(f"Available Stock: {available_qty} {product_details['Unit']} | Unit Selling Price: ₦{unit_selling_price:.2f}")
+                quantity_to_add = st.number_input(
+                    "Quantity to Add",
+                    min_value=1,
+                    max_value=int(available_quantity) if available_quantity > 0 else 0,
+                    step=1,
+                    key="pos_quantity_input"
+                )
 
-                # Max value of quantity_to_add is the available stock
-                quantity_to_add = st.number_input(f"Quantity for '{product_details['Product Name']}'", min_value=1, max_value=available_qty, value=1, key=f"qty_to_add_pos_{selected_sku_pos}")
-                
-                # --- DEBUGGING INFO ---
-                st.info(f"DEBUG: Selected SKU: {selected_sku_pos}, Quantity to Add: {quantity_to_add}")
-                st.write(f"DEBUG: Current cart (before button click): {st.session_state.cart}")
-
-
-                # Changed the "Add to Cart" button line:
-                if st.button("Add to Cart", key=f"add_to_cart_btn_{st.session_state.current_store}", type="primary"): # Unique key for button
-                    st.info("DEBUG: 'Add to Cart' button clicked! Attempting to add item...") # Debugging message
-
-                    if selected_sku_pos and quantity_to_add > 0:
-                        # Check if item already in cart, update quantity
+                if st.button("Add to Cart", key="add_to_cart_button"):
+                    if quantity_to_add > 0:
+                        # Check if product is already in cart to update quantity
                         found_in_cart = False
                         for item in st.session_state.cart:
-                            if item['SKU'] == selected_sku_pos:
-                                # Ensure adding to cart doesn't exceed available stock
-                                if (item['Quantity'] + quantity_to_add) > available_qty:
-                                    st.error(f"Cannot add {quantity_to_add} more. Only {available_qty - item['Quantity']} remaining to reach available stock.")
-                                else:
+                            if item['SKU'] == selected_product_data['SKU']:
+                                if (item['Quantity'] + quantity_to_add) <= available_quantity:
                                     item['Quantity'] += quantity_to_add
                                     item['Subtotal'] = item['Quantity'] * item['Unit Price']
-                                    st.success(f"Added {quantity_to_add} more of '{product_details['Product Name']}' to cart. Current cart quantity: {item['Quantity']}")
+                                    st.success(f"Added {quantity_to_add} more of '{selected_product_name}' to cart.")
+                                else:
+                                    st.error(f"Cannot add {quantity_to_add} more. Only {available_quantity - item['Quantity']} available.")
                                 found_in_cart = True
                                 break
                         
                         if not found_in_cart:
-                            if quantity_to_add > available_qty:
-                                st.error(f"Cannot add {quantity_to_add}. Only {available_qty} available in stock.")
-                            else:
-                                item_subtotal = quantity_to_add * unit_selling_price
+                            if quantity_to_add <= available_quantity:
                                 st.session_state.cart.append({
-                                    "SKU": selected_sku_pos,
-                                    "Product Name": product_details['Product Name'],
-                                    "Quantity": quantity_to_add,
-                                    "Unit Price": unit_selling_price, # This is the selling price
-                                    "Subtotal": item_subtotal
+                                    'SKU': selected_product_data['SKU'],
+                                    'Product Name': selected_product_name,
+                                    'Quantity': quantity_to_add,
+                                    'Unit': selected_product_data['Unit'], # Added unit to cart item
+                                    'Unit Price': unit_price,
+                                    'Cost Price': selected_product_data['Cost Price (₦)'], # Added cost price to cart item
+                                    'Subtotal': quantity_to_add * unit_price
                                 })
-                                st.success(f"Added {quantity_to_add} units of '{product_details['Product Name']}' to cart.")
-                        st.rerun() # Rerun to update cart display and stock info
+                                st.success(f"Added {quantity_to_add} of '{selected_product_name}' to cart.")
+                            else:
+                                st.error(f"Requested quantity ({quantity_to_add}) exceeds available stock ({available_quantity}).")
+                    else:
+                        st.warning("Please enter a quantity greater than 0.")
+        else:
+            st.info("No products in inventory for sale in this store.")
 
-            else:
-                st.info("Select a product to view details and add to cart.")
-
-    with col_cart:
-        st.subheader("Customer Cart")
-        # --- DEBUGGING INFO ---
-        st.write(f"DEBUG: Cart contents: {st.session_state.cart}")
+    with col2:
+        st.subheader("Shopping Cart")
         if st.session_state.cart:
             cart_df = pd.DataFrame(st.session_state.cart)
-            st.dataframe(cart_df[['Product Name', 'Quantity', 'Unit Price', 'Subtotal']], use_container_width=True, hide_index=True)
-            
-            total_cart_amount = cart_df['Subtotal'].sum()
-            st.markdown(f"### **Total Amount: ₦{total_cart_amount:.2f}**")
+            cart_display_df = cart_df[['Product Name', 'Quantity', 'Unit Price', 'Subtotal']].copy()
+            cart_display_df.rename(columns={'Unit Price': 'Price (₦)', 'Subtotal': 'Subtotal (₦)'}, inplace=True)
+            st.dataframe(cart_display_df, hide_index=True, use_container_width=True)
 
-            col_finalize, col_clear, col_print, col_pdf = st.columns(4) # Added col_pdf
-            with col_finalize:
-                if st.button("Finalize Sale & Generate Receipt", key="finalize_sale_btn"):
-                    sale_successful = True
-                    failed_item_name = None
+            cart_total = cart_df['Subtotal'].sum()
+            st.markdown(f"### Cart Total: ₦{cart_total:.2f}")
+
+            st.write("---")
+            if st.button("Complete Sale", key="complete_sale_button"):
+                if st.session_state.cart:
+                    transaction_successful = True
+                    total_revenue_from_sale = 0
+                    total_cogs_from_sale = 0
                     
+                    # Process each item in the cart
                     for item in st.session_state.cart:
                         sku = item['SKU']
-                        qty_sold = item['Quantity']
-                        selling_price = item['Unit Price']
-                        
-                        if not update_stock(sku, qty_sold, "Sale", st.session_state.current_store, selling_price=selling_price):
-                            failed_item_name = item['Product Name']
-                            sale_successful = False
-                            break
-                    
-                    if sale_successful:
-                        receipt_content = generate_receipt(st.session_state.cart, total_cart_amount)
-                        st.session_state.receipt_history.append(receipt_content)
-                        
-                        st.success("Sale finalized! Receipt generated. Stock levels updated.")
-                        st.session_state.cart = []
-                        st.session_state.last_receipt = receipt_content
-                        st.rerun()
-                    else:
-                        st.error(f"Sale could not be finalized due to insufficient stock for '{failed_item_name}'. Please adjust quantity or clear cart.")
-            with col_clear:
-                if st.button("Clear Cart", key="clear_cart_btn"):
-                    st.session_state.cart = []
-                    st.session_state.last_receipt = ""
-                    st.info("Cart cleared.")
-                    st.rerun()
-            with col_print: # Existing print button
-                if st.button("Print This Receipt", key="print_last_receipt_btn"):
-                    st.components.v1.html(
-                        """
-                        <script>
-                            window.print();
-                        </script>
-                        """,
-                        height=0,
-                        width=0
-                    )
-            with col_pdf: # New PDF generation button
-                if st.button("Generate PDF", key="generate_pdf_btn"):
-                    # This JavaScript code uses the html2pdf.js library loaded in the <style> block
-                    st.components.v1.html(
-                        """
-                        <script>
-                            // Function to generate and download PDF
-                            function generatePdf() {
-                                const element = document.querySelector('.receipt-container');
-                                if (element) {
-                                    html2pdf().from(element).save('receipt.pdf');
-                                } else {
-                                    console.error("Receipt container not found for PDF generation.");
-                                }
-                            }
-                            // Call the function when the button is clicked (triggered by Streamlit's rerender)
-                            generatePdf();
-                        </script>
-                        """,
-                        height=0,
-                        width=0
-                    )
+                        qty = item['Quantity']
+                        unit_price_sold = item['Unit Price']
+                        cost_price_of_item = item['Cost Price'] # Use the cost price recorded at time of adding to cart
 
+                        if not update_stock(sku, qty, "Sale", st.session_state.current_store, unit_price_sold, cost_price_of_item):
+                            transaction_successful = False
+                            st.error(f"Failed to process sale for {item['Product Name']}. Sale aborted.")
+                            break # Stop processing if any item fails
+                        else:
+                            total_revenue_from_sale += (qty * unit_price_sold)
+                            total_cogs_from_sale += (qty * cost_price_of_item)
+
+                    if transaction_successful:
+                        # Generate and display receipt
+                        receipt = generate_receipt(st.session_state.cart, total_revenue_from_sale)
+                        st.session_state.last_receipt = receipt # Store for potential printing
+                        st.session_state.receipt_history.append(receipt) # Add to history
+                        
+                        st.success("Sale completed and recorded!")
+                        st.markdown("### Customer Receipt:")
+                        st.markdown(receipt, unsafe_allow_html=True)
+                        
+                        # Clear cart after successful sale
+                        st.session_state.cart = []
+                        st.rerun() # Rerun to clear cart display
+                else:
+                    st.warning("Cart is empty. Add products before completing a sale.")
+
+            # Clear Cart Button
+            if st.button("Clear Cart", key="clear_cart_button"):
+                st.session_state.cart = []
+                st.success("Shopping cart cleared.")
+                st.rerun() # Rerun to update the displayed cart
+
+            # Print Receipt Button
+            if st.session_state.last_receipt and st.button("Print Last Receipt", key="print_receipt_button"):
+                # Inject JavaScript to trigger print dialog for the receipt div
+                st.components.v1.html(
+                    """
+                    <script>
+                        function printReceipt() {
+                            var printContents = document.querySelector('.receipt-container').outerHTML;
+                            var originalContents = document.body.innerHTML;
+                            document.body.innerHTML = printContents;
+                            window.print();
+                            document.body.innerHTML = originalContents;
+                            window.location.reload(); // Reload to restore Streamlit app
+                        }
+                        printReceipt();
+                    </script>
+                    """,
+                    height=0,
+                    width=0
+                )
+                st.info("Please use your browser's print dialog to print the receipt.")
+                
         else:
-            st.info("Cart is empty.")
-    
-    if st.session_state.last_receipt:
-        st.subheader("Last Generated Receipt:")
-        st.markdown(st.session_state.last_receipt, unsafe_allow_html=True)
-        # The print and PDF buttons are now inside the col_cart block above, after cart_df check
-        # This conditional block ensures receipt is only shown if last_receipt exists
-        pass # No need for duplicate buttons here
+            st.info("Shopping cart is empty.")
+            st.session_state.last_receipt = "" # Ensure no old receipt is displayed if cart is empty
+
 
 elif selected_page == "Record Transactions":
-    st.markdown('<div class="section-header">✍️ Record Sales & Stock In</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">📊 Record Transactions</div>', unsafe_allow_html=True)
+    st.subheader("Manual Stock Update / Transaction Record")
 
-    transaction_tab, lookup_tab = st.tabs(["Record Individual Transaction", "Product Lookup by Back Code"])
+    with st.form("transaction_form"):
+        product_options = filtered_inventory['Product Name'].tolist()
+        selected_product = st.selectbox("Select Product", product_options, key="manual_transaction_product")
+        
+        if selected_product:
+            product_sku = filtered_inventory[filtered_inventory['Product Name'] == selected_product]['SKU'].iloc[0]
+            current_qty = filtered_inventory[filtered_inventory['Product Name'] == selected_product]['Quantity'].iloc[0]
+            current_selling_price = filtered_inventory[filtered_inventory['Product Name'] == selected_product]['Unit Price (₦)'].iloc[0]
+            current_cost_price = filtered_inventory[filtered_inventory['Product Name'] == selected_product]['Cost Price (₦)'].iloc[0]
 
-    with transaction_tab:
-        st.subheader(f"Record Single Inventory Movement for {st.session_state.current_store}")
-        transaction_type = st.radio("Select Transaction Type:", ["Sale", "Purchase (Stock In)"])
+            st.info(f"Current Stock: {current_qty} for '{selected_product}'")
 
-        product_options_list = filtered_inventory.apply(lambda row: f"{row['SKU']} - {row['Product Name']}", axis=1).tolist()
+            transaction_type = st.radio("Transaction Type", ["Sale", "Purchase (Stock In)", "Adjustment (Out)", "Adjustment (In)"], key="transaction_type_radio")
+            
+            quantity_change = st.number_input("Quantity Change", min_value=0, step=1, key="quantity_change_input")
+            
+            selling_price_input = 0.0
+            purchase_cost_price_input = 0.0
 
+            if transaction_type == "Sale":
+                selling_price_input = st.number_input(f"Selling Price per Unit (₦) (Current: ₦{current_selling_price:.2f})", min_value=0.0, value=current_selling_price, format="%.2f", key="sale_price_input")
+            elif transaction_type == "Purchase (Stock In)":
+                purchase_cost_price_input = st.number_input(f"New Cost Price per Unit (₦) (Current: ₦{current_cost_price:.2f})", min_value=0.0, value=current_cost_price, format="%.2f", help="Enter the new cost price for this purchase. This will update the inventory's cost price for this product.", key="purchase_cost_input")
+            
+            notes = st.text_area("Notes (Optional)", key="transaction_notes")
 
-        if not product_options_list:
-            st.warning(f"No products in inventory for {st.session_state.current_store}. Please add products first under 'Manage Products'.")
+            submit_transaction = st.form_submit_button("Record Transaction")
+
+            if submit_transaction:
+                if quantity_change > 0:
+                    if transaction_type == "Sale" or transaction_type == "Adjustment (Out)":
+                        if update_stock(product_sku, quantity_change, transaction_type, st.session_state.current_store, selling_price=selling_price_input):
+                            st.success(f"Recorded {transaction_type} of {quantity_change} units for '{selected_product}'.")
+                            st.rerun()
+                    elif transaction_type == "Purchase (Stock In)" or transaction_type == "Adjustment (In)":
+                        if update_stock(product_sku, quantity_change, transaction_type, st.session_state.current_store, purchase_cost_price=purchase_cost_price_input):
+                            st.success(f"Recorded {transaction_type} of {quantity_change} units for '{selected_product}'.")
+                            st.rerun()
+                else:
+                    st.error("Quantity change must be greater than zero.")
         else:
-            with st.form("transaction_form"):
-                selected_product_option = st.selectbox("Select Product:", product_options_list, key="transaction_product_select")
-                selected_sku_for_transaction = selected_product_option.split(' - ')[0] if selected_product_option else None
+            st.info("Please add products to the inventory first to record transactions.")
 
-                quantity_change = st.number_input("Quantity:", min_value=1, value=1)
-                
-                purchase_cost_input = 0.0
-                if transaction_type == "Purchase (Stock In)":
-                    product_current_cost = filtered_inventory[filtered_inventory['SKU'].str.upper() == selected_sku_for_transaction.upper()]['Cost Price (₦)'].iloc[0] if selected_sku_for_transaction else 0.0
-                    purchase_cost_input = st.number_input(f"Purchase Cost Price (₦) for '{selected_product_option.split(' - ')[1] if selected_product_option else ''}' (Current: ₦{product_current_cost:.2f})", min_value=0.00, format="%.2f", value=float(product_current_cost))
+    st.subheader("Transaction History for Current Store")
+    if not filtered_transactions.empty:
+        # Display relevant columns for transaction history
+        st.dataframe(filtered_transactions[[
+            'Timestamp', 'Product Name', 'Quantity Change', 'Type', 'Selling Price (₦)', 
+            'Cost Price (₦)', 'Revenue (₦)', 'Cost of Goods Sold (₦)', 'Profit/Loss (₦)', 
+            'Cost of Goods Bought (₦)', 'New Quantity'
+        ]].sort_values(by='Timestamp', ascending=False), use_container_width=True)
+        
+        # Download transaction history
+        st.download_button(
+            label="Download Transaction History (Excel)",
+            data=to_excel(filtered_transactions),
+            file_name=f"transactions_{st.session_state.current_store}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.info("No transactions recorded for this store yet.")
 
 
-                submitted_transaction = st.form_submit_button(f"Record {transaction_type}")
-                if submitted_transaction:
-                    if selected_sku_for_transaction and quantity_change > 0:
-                        if transaction_type == "Sale":
-                            selling_price_for_manual_sale = filtered_inventory[filtered_inventory['SKU'].str.upper() == selected_sku_for_transaction.upper()]['Unit Price (₦)'].iloc[0]
-                            if update_stock(selected_sku_for_transaction, quantity_change, transaction_type, st.session_state.current_store, selling_price=selling_price_for_manual_sale):
-                                st.rerun()
-                        elif transaction_type == "Purchase (Stock In)":
-                            if update_stock(selected_sku_for_transaction, quantity_change, transaction_type, st.session_state.current_store, purchase_cost_price=purchase_cost_input):
-                                st.rerun()
-                    else:
-                        st.error("Please select a product and enter a valid quantity.")
-
-    with lookup_tab:
-        st.subheader(f"Lookup Product by Back Code (SKU) for {st.session_state.current_store}")
-        lookup_sku = st.text_input("Enter Product Back Code (SKU):", key="lookup_sku_input").strip()
-
-        if lookup_sku:
-            found_product = filtered_inventory[filtered_inventory['SKU'].str.upper() == lookup_sku.upper()]
-            if not found_product.empty:
-                product_data = found_product.iloc[0]
-                st.success(f"Product Found: **{product_data['Product Name']}**")
-                st.write(f"**SKU / Product Number:** {product_data['SKU']}")
-                st.write(f"**Current Stock Level:** {product_data['Quantity']} {product_data['Unit']}")
-                st.write(f"**Unit Selling Price:** ₦{product_data['Unit Price (₦)']:.2f}")
-                st.write(f"**Current Cost Price:** ₦{product_data['Cost Price (₦)']:.2f}")
-                st.write(f"**Category:** {product_data['Category']}")
-                st.write(f"**Reorder Point:** {product_data['Reorder Point']}")
-                st.write(f"**Expiry Date:** {product_data['Expiry Date'].strftime('%Y-%m-%d')}")
-            else:
-                st.warning(f"No product found with Back Code (SKU): '{lookup_sku}' in {st.session_state.current_store}.")
-        else:
-            st.info(f"Enter a product back code (SKU) to look up its details for {st.session_state.current_store}.")
-
-elif selected_page == "Operating Expenses": # NEW SECTION FOR OPERATING EXPENSES
+elif selected_page == "Operating Expenses":
     st.markdown('<div class="section-header">💸 Operating Expenses</div>', unsafe_allow_html=True)
+    st.subheader("Add New Operating Expense")
 
-    st.subheader(f"Record New Operating Expense for {st.session_state.current_store}")
     with st.form("add_expense_form"):
-        expense_date = st.date_input("Date of Expense", value=datetime.now().date())
-        expense_category = st.selectbox("Expense Category", [
-            "Salaries", "Rent", "Electricity Bills", "Internet Services",
-            "Generator Fuel", "Generator Maintenance", "Transport",
-            "Office Cleaning", "Office Maintenance", "Marketing", "Other"
-        ])
-        expense_description = st.text_area("Description", placeholder="e.g., Monthly rent payment, Diesel refill")
-        expense_amount = st.number_input("Amount (₦)", min_value=0.00, format="%.2f")
+        expense_date = st.date_input("Date", datetime.now().date())
+        expense_category = st.selectbox("Category", ["Rent", "Salaries", "Utilities", "Marketing", "Maintenance", "Others"])
+        expense_description = st.text_area("Description", max_chars=200)
+        expense_amount = st.number_input("Amount (₦)", min_value=0.0, format="%.2f")
 
         add_expense_submitted = st.form_submit_button("Add Expense")
+
         if add_expense_submitted:
-            if expense_date and expense_category and expense_amount > 0:
+            if expense_amount > 0 and expense_description:
                 new_expense = pd.DataFrame([{
                     "Date": expense_date,
                     "Category": expense_category,
                     "Description": expense_description,
                     "Amount (₦)": expense_amount,
-                    "Store": st.session_state.current_store # Assign to current store
+                    "Store": st.session_state.current_store
                 }])
                 st.session_state.operating_expenses = pd.concat([st.session_state.operating_expenses, new_expense], ignore_index=True)
-                st.success(f"Recorded expense: {expense_category} - ₦{expense_amount:.2f} for {st.session_state.current_store}")
+                st.success(f"Added expense '{expense_description}' of ₦{expense_amount:.2f}.")
                 st.rerun()
             else:
-                st.error("Please fill in all required fields and ensure the amount is valid.")
-
-    st.markdown("---")
-    st.subheader(f"Summary of Operating Expenses for {st.session_state.current_store}")
+                st.error("Please provide a description and a valid amount for the expense.")
+    
+    st.subheader("Operating Expenses for Current Store")
     if not filtered_expenses.empty:
-        total_expenses = filtered_expenses['Amount (₦)'].sum()
-        st.markdown(f"""
-        <div class="report-card red">
-            <div class="value">₦{total_expenses:,.2f}</div>
-            <div class="label">Total Operating Expenses</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.subheader(f"Detailed Operating Expenses for {st.session_state.current_store}")
         st.dataframe(filtered_expenses.sort_values(by='Date', ascending=False), use_container_width=True)
 
-        csv_expenses = to_excel(filtered_expenses)
+        total_expenses = filtered_expenses['Amount (₦)'].sum()
+        st.markdown(f"**Total Operating Expenses for {st.session_state.current_store}: ₦{total_expenses:,.2f}**")
+
         st.download_button(
-            label="Download Operating Expenses as Excel",
-            data=csv_expenses,
-            file_name=f"operating_expenses_report_{st.session_state.current_store.replace(' ', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_expenses_excel"
+            label="Download Operating Expenses (Excel)",
+            data=to_excel(filtered_expenses),
+            file_name=f"operating_expenses_{st.session_state.current_store}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.info(f"No operating expenses recorded yet for {st.session_state.current_store}.")
+        st.info("No operating expenses recorded for this store yet.")
 
 
 elif selected_page == "Expiry Alerts":
@@ -1239,14 +1116,13 @@ elif selected_page == "Expiry Alerts":
 
     today = datetime.now().date()
     
-    expired_items = filtered_inventory[filtered_inventory['Expiry Date'] < today].sort_values(by="Expiry Date")
-    
+    # Existing expiring_soon_items and expired_items logic is reused from dashboard section
+    # Re-calculate to ensure it's fresh for this page if needed, or assume filtered_inventory is up-to-date.
     expiring_soon_items_list = []
     for index, row in filtered_inventory.iterrows():
         product_expiry_date = row['Expiry Date']
         product_name = row['Product Name']
         
-        # Check if product_name is a valid string before calling .lower()
         if pd.notna(product_name) and str(product_name).strip().lower() == "gala sausage":
             alert_days = GALA_SAUSAGE_EXPIRY_ALERT_DAYS
         else:
@@ -1259,364 +1135,212 @@ elif selected_page == "Expiry Alerts":
     if not expiring_soon_items.empty:
         expiring_soon_items = expiring_soon_items.sort_values(by="Expiry Date")
 
+    expired_items = filtered_inventory[filtered_inventory['Expiry Date'] < today].sort_values(by="Expiry Date")
 
-    st.subheader(f"Expired Products in {st.session_state.current_store}")
+
+    st.subheader("Expired Products")
     if not expired_items.empty:
-        st.error(f"⚠️ **{len(expired_items)} product(s) have already expired!** Please remove these from shelves.")
-        st.dataframe(expired_items[['SKU', 'Product Name', 'Quantity', 'Expiry Date', 'Unit']], use_container_width=True)
+        st.error("The following products have **EXPIRED**:")
+        st.dataframe(expired_items[['Product Name', 'SKU', 'Quantity', 'Expiry Date', 'Store']], use_container_width=True)
     else:
-        st.info(f"No products have expired in {st.session_state.current_store}.")
+        st.info("No products have expired.")
 
-    st.subheader(f"Products Expiring Soon in {st.session_state.current_store}")
-    if not expiring_soon_items_df.empty:
-        st.warning(f"🗓️ The following **{len(expiring_soon_items_df)} product(s) are expiring soon!** Consider promotions or re-stocking.")
-        expiring_soon_items_df['Days Until Expiry'] = (expiring_soon_items_df['Expiry Date'] - today).dt.days
-        st.dataframe(expiring_soon_items_df[['SKU', 'Product Name', 'Quantity', 'Expiry Date', 'Days Until Expiry', 'Unit']], use_container_width=True)
+    st.subheader(f"Products Expiring Soon (within {DEFAULT_EXPIRY_ALERT_DAYS} days)")
+    if not expiring_soon_items.empty:
+        st.warning("The following products are **Nearing Expiry Date**:")
+        st.dataframe(expiring_soon_items[['Product Name', 'SKU', 'Quantity', 'Expiry Date', 'Store']], use_container_width=True)
     else:
-        st.info(f"No products are expiring within their alert periods in {st.session_state.current_store}.")
+        st.info("No products are expiring soon.")
 
 
 elif selected_page == "Low Stock Alerts":
-    st.markdown('<div class="section-header">🚨 Low Stock Alerts</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">⚠️ Low Stock Alerts</div>', unsafe_allow_html=True)
+    
+    # Existing low_stock_items and critical_stock_items logic is reused from dashboard section
+    low_stock_items = filtered_inventory[filtered_inventory['Quantity'] <= filtered_inventory['Reorder Point']]
+    critical_stock_items = filtered_inventory[filtered_inventory['Quantity'] <= CRITICAL_STOCK_THRESHOLD]
 
-    low_stock_items = filtered_inventory[filtered_inventory['Quantity'] <= filtered_inventory['Reorder Point']].sort_values(by="Quantity")
-    critical_stock_items = filtered_inventory[filtered_inventory['Quantity'] <= CRITICAL_STOCK_THRESHOLD].sort_values(by="Quantity")
-
-    st.markdown(f"### Critical Stock Products (Quantity $\\le$ {CRITICAL_STOCK_THRESHOLD}) in {st.session_state.current_store}", unsafe_allow_html=True)
+    st.subheader("Critical Stock Items")
     if not critical_stock_items.empty:
-        st.markdown(f"""
-        <div class="low-stock-alert">
-            <p><strong>Critical Stock! Immediate Attention Required:</strong> These items are running extremely low.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.dataframe(critical_stock_items[['SKU', 'Product Name', 'Category', 'Quantity', 'Reorder Point', 'Last Updated']], use_container_width=True)
+        st.markdown('<div class="low-stock-alert">', unsafe_allow_html=True)
+        st.markdown(f"**CRITICAL STOCK ALERT!** The following products have **{CRITICAL_STOCK_THRESHOLD}** or fewer units left:", unsafe_allow_html=True)
+        st.dataframe(critical_stock_items[['Product Name', 'SKU', 'Quantity', 'Reorder Point', 'Store']], use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.info(f"No products are at critical stock levels in {st.session_state.current_store}.")
+        st.info("No products are at critical stock levels.")
 
-    st.subheader(f"Products Below Reorder Point in {st.session_state.current_store}")
-    general_low_stock_only = low_stock_items[~low_stock_items['SKU'].isin(critical_stock_items['SKU'])]
-
-    if not general_low_stock_only.empty:
-        st.markdown(f"""
-        <div class="low-stock-alert" style="background-color: #ffead6; color: #cc6600; border-left: 6px solid #ff9933;">
-            <p><strong>Low Stock Warning!</strong> These items are below their reorder point and might need to be restocked soon.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        st.dataframe(general_low_stock_only[['SKU', 'Product Name', 'Category', 'Quantity', 'Reorder Point', 'Last Updated']], use_container_width=True)
+    st.subheader("Low Stock Items (Below Reorder Point)")
+    # Filter out items already identified as critical stock to avoid duplication
+    low_stock_only_items = low_stock_items[~low_stock_items['SKU'].isin(critical_stock_items['SKU'])]
+    if not low_stock_only_items.empty:
+        st.warning("The following products are at **Low Stock** and need reordering:")
+        st.dataframe(low_stock_only_items[['Product Name', 'SKU', 'Quantity', 'Reorder Point', 'Store']], use_container_width=True)
     else:
-        if critical_stock_items.empty:
-            st.info(f"No products are currently low in stock in {st.session_state.current_store}. All good!")
-        else:
-            st.info(f"All products currently below reorder point are at critical stock levels in {st.session_state.current_store}.")
+        st.info("No products are currently at low stock levels (excluding critical stock).")
 
 elif selected_page == "Analytics & Reports":
     st.markdown('<div class="section-header">📈 Analytics & Reports</div>', unsafe_allow_html=True)
 
-    report_tabs = st.tabs(["Sales Report", "Cost of Goods Bought Report", "Cost of Sales Report", "Overall Profit/Loss Report (Current Store)", "Group Report (All Stores)"]) # Added overall profit/loss
+    st.subheader(f"Reports for {st.session_state.current_store}")
 
-    with report_tabs[0]: # Sales Report Tab
-        st.subheader(f"Daily Sales Report for {st.session_state.current_store}")
-        sales_transactions = filtered_transactions[filtered_transactions['Type'] == 'Sale'].copy()
+    # Calculate metrics for the current store
+    total_revenue = filtered_transactions[filtered_transactions['Type'] == 'Sale']['Revenue (₦)'].sum()
+    total_cogs = filtered_transactions[filtered_transactions['Type'] == 'Sale']['Cost of Goods Sold (₦)'].sum()
+    gross_profit = total_revenue - total_cogs
+    total_expenses = filtered_expenses['Amount (₦)'].sum()
+    net_profit = gross_profit - total_expenses
 
-        if not sales_transactions.empty:
-            total_revenue = sales_transactions['Revenue (₦)'].sum()
-            total_items_sold = sales_transactions['Quantity Change'].abs().sum()
+    col_r1, col_r2, col_r3 = st.columns(3)
+    with col_r1:
+        st.markdown(f"""
+        <div class="report-card blue">
+            <div class="value">₦{total_revenue:,.2f}</div>
+            <div class="label">Total Sales Revenue</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_r2:
+        st.markdown(f"""
+        <div class="report-card red">
+            <div class="value">₦{total_cogs:,.2f}</div>
+            <div class="label">Total Cost of Sales</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_r3:
+        st.markdown(f"""
+        <div class="report-card {'green' if gross_profit >= 0 else 'red'}">
+            <div class="value">₦{gross_profit:,.2f}</div>
+            <div class="label">Gross Profit</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-            col_sales_rev, col_items_sold = st.columns(2)
-            with col_sales_rev:
-                st.markdown(f"""
-                <div class="report-card blue">
-                    <div class="value">₦{total_revenue:,.2f}</div>
-                    <div class="label">Total Sales Revenue</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_items_sold:
-                st.markdown(f"""
-                <div class="report-card">
-                    <div class="value">{total_items_sold:,.0f}</div>
-                    <div class="label">Total Items Sold</div>
-                </div>
-                """, unsafe_allow_html=True)
+    st.write("---")
+    st.subheader(f"Overall Profit/Loss for {st.session_state.current_store}")
+    col_nl1, col_nl2 = st.columns(2)
+    with col_nl1:
+        st.markdown(f"""
+        <div class="report-card red">
+            <div class="value">₦{total_expenses:,.2f}</div>
+            <div class="label">Total Operating Expenses</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_nl2:
+        st.markdown(f"""
+        <div class="report-card {'green' if net_profit >= 0 else 'red'}">
+            <div class="value">₦{net_profit:,.2f}</div>
+            <div class="label">Net Profit/Loss</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-            st.markdown("---")
-            st.subheader("Detailed Sales Transactions")
-            sales_report_df = sales_transactions[['Timestamp', 'Product Name', 'Quantity Change', 'Selling Price (₦)', 'Revenue (₦)']].copy()
-            sales_report_df.rename(columns={'Quantity Change': 'Quantity Sold'}, inplace=True)
-            sales_report_df['Quantity Sold'] = sales_report_df['Quantity Sold'].abs()
-            
-            st.dataframe(sales_report_df.sort_values(by='Timestamp', ascending=False), use_container_width=True)
 
-            csv = to_excel(sales_report_df)
-            st.download_button(
-                label="Download Sales Report as Excel",
-                data=csv,
-                file_name=f"sales_report_{st.session_state.current_store.replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_sales_excel"
-            )
-        else:
-            st.info(f"No sales transactions recorded yet for {st.session_state.current_store}.")
+    st.markdown("---")
+    st.subheader("Group Report (All Stores Consolidated)")
+    
+    # Calculate consolidated metrics
+    all_sales_transactions = st.session_state.transactions[st.session_state.transactions['Type'] == 'Sale']
+    group_total_revenue = all_sales_transactions['Revenue (₦)'].sum()
+    group_total_cogs = all_sales_transactions['Cost of Goods Sold (₦)'].sum()
+    group_gross_profit = group_total_revenue - group_total_cogs
+    group_total_expenses = st.session_state.operating_expenses['Amount (₦)'].sum()
+    group_net_profit = group_gross_profit - group_total_expenses
 
-    with report_tabs[1]: # Cost of Goods Bought Report Tab
-        st.subheader(f"Cost of Goods Bought Report for {st.session_state.current_store}")
-        purchase_transactions = filtered_transactions[filtered_transactions['Type'] == 'Purchase (Stock In)'].copy()
+    col_g1, col_g2, col_g3, col_g4 = st.columns(4)
+    with col_g1:
+        st.markdown(f"""
+        <div class="report-card blue">
+            <div class="value">₦{group_total_revenue:,.2f}</div>
+            <div class="label">Group Sales Revenue</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_g2:
+        st.markdown(f"""
+        <div class="report-card red">
+            <div class="value">₦{group_total_cogs:,.2f}</div>
+            <div class="label">Group Cost of Sales</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_g3:
+        st.markdown(f"""
+        <div class="report-card {'green' if group_gross_profit >= 0 else 'red'}">
+            <div class="value">₦{group_gross_profit:,.2f}</div>
+            <div class="label">Group Gross Profit</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col_g4:
+        st.markdown(f"""
+        <div class="report-card {'green' if group_net_profit >= 0 else 'red'}">
+            <div class="value">₦{group_net_profit:,.2f}</div>
+            <div class="label">Group Net Profit/Loss</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        if not purchase_transactions.empty:
-            total_cost_of_goods_bought = purchase_transactions['Cost of Goods Bought (₦)'].sum()
-            total_items_bought = purchase_transactions['Quantity Change'].sum()
+    st.markdown("---")
+    st.subheader("Export Reports")
 
-            col_purchase_cost, col_items_bought = st.columns(2)
-            with col_purchase_cost:
-                st.markdown(f"""
-                <div class="report-card red">
-                    <div class="value">₦{total_cost_of_goods_bought:,.2f}</div>
-                    <div class="label">Total Procurement Cost</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_items_bought:
-                st.markdown(f"""
-                <div class="report-card">
-                    <div class="value">{total_items_bought:,.0f}</div>
-                    <div class="label">Total Items Procured</div>
-                </div>
-                """, unsafe_allow_html=True)
+    col_export1, col_export2, col_export3 = st.columns(3)
 
-            st.markdown("---")
-            st.subheader("Detailed Purchase Transactions")
-            purchase_report_df = purchase_transactions[['Timestamp', 'Product Name', 'Quantity Change', 'Cost Price (₦)', 'Cost of Goods Bought (₦)']].copy()
-            purchase_report_df.rename(columns={'Quantity Change': 'Quantity Bought'}, inplace=True)
-            
-            st.dataframe(purchase_report_df.sort_values(by='Timestamp', ascending=False), use_container_width=True)
-
-            csv = to_excel(purchase_report_df)
-            st.download_button(
-                label="Download Cost of Goods Bought Report as Excel",
-                data=csv,
-                file_name=f"cost_of_goods_bought_report_{st.session_state.current_store.replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_cogs_bought_excel"
-            )
-        else:
-            st.info(f"No purchase transactions recorded yet for {st.session_state.current_store}.")
-
-    with report_tabs[2]: # Cost of Sales Report (Profit/Loss) Tab
-        st.subheader(f"Cost of Sales (Profit/Loss) Report for {st.session_state.current_store}")
-        sales_transactions_for_profit = filtered_transactions[filtered_transactions['Type'] == 'Sale'].copy()
-
-        if not sales_transactions_for_profit.empty:
-            total_revenue_profit = sales_transactions_for_profit['Revenue (₦)'].sum()
-            total_cogs_profit = sales_transactions_for_profit['Cost of Goods Sold (₦)'].sum()
-            total_profit = sales_transactions_for_profit['Profit/Loss (₦)'].sum()
-
-            col_profit_rev, col_profit_cogs, col_profit_total = st.columns(3)
-            with col_profit_rev:
-                st.markdown(f"""
-                <div class="report-card blue">
-                    <div class="value">₦{total_revenue_profit:,.2f}</div>
-                    <div class="label">Total Revenue</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_cogs:
-                st.markdown(f"""
-                <div class="report-card red">
-                    <div class="value">₦{total_cogs_profit:,.2f}</div>
-                    <div class="label">Total Cost of Sales</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col_profit_total:
-                card_class = "green" if total_profit >= 0 else "red"
-                st.markdown(f"""
-                <div class="report-card {card_class}">
-                    <div class="value">₦{total_profit:,.2f}</div>
-                    <div class="label">Total Profit/Loss</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.markdown("---")
-            st.subheader("Detailed Profit/Loss Transactions")
-            profit_loss_report_df = sales_transactions_for_profit[[
-                'Timestamp', 'Product Name', 'Quantity Change', 'Selling Price (₦)',
-                'Cost Price (₦)', 'Revenue (₦)', 'Cost of Goods Sold (₦)', 'Profit/Loss (₦)'
-            ]].copy()
-            profit_loss_report_df.rename(columns={'Quantity Change': 'Quantity Sold'}, inplace=True)
-            profit_loss_report_df['Quantity Sold'] = profit_loss_report_df['Quantity Sold'].abs()
-            
-            st.dataframe(profit_loss_report_df.sort_values(by='Timestamp', ascending=False), use_container_width=True)
-
-            csv = to_excel(profit_loss_report_df)
-            st.download_button(
-                label="Download Cost of Sales Report as Excel",
-                data=csv,
-                file_name=f"cost_of_sales_report_{st.session_state.current_store.replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_cogs_sales_excel"
-            )
-        else:
-            st.info(f"No sales transactions available to generate a Cost of Sales Report for {st.session_state.current_store}.")
-
-    with report_tabs[3]: # Overall Profit/Loss Report Tab (for selected store)
-        st.subheader(f"Overall Profit/Loss Report for {st.session_state.current_store}")
-        
-        # Calculate total revenue for the selected store
-        total_revenue_overall = filtered_transactions[filtered_transactions['Type'] == 'Sale']['Revenue (₦)'].sum()
-        
-        # Calculate total cost of goods sold for the selected store
-        total_cogs_overall = filtered_transactions[filtered_transactions['Type'] == 'Sale']['Cost of Goods Sold (₦)'].sum()
-
-        # Calculate total operating expenses for the selected store
-        total_operating_expenses_overall = filtered_expenses['Amount (₦)'].sum()
-
-        gross_profit = total_revenue_overall - total_cogs_overall
-        net_profit = gross_profit - total_operating_expenses_overall
-
-        col_rev_overall, col_cogs_overall, col_exp_overall, col_profit_overall = st.columns(4)
-
-        with col_rev_overall:
-            st.markdown(f"""
-            <div class="report-card blue">
-                <div class="value">₦{total_revenue_overall:,.2f}</div>
-                <div class="label">Total Revenue</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_cogs_overall:
-            st.markdown(f"""
-            <div class="report-card red">
-                <div class="value">₦{total_cogs_overall:,.2f}</div>
-                <div class="label">Total COGS</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_exp_overall:
-            st.markdown(f"""
-            <div class="report-card red">
-                <div class="value">₦{total_operating_expenses_overall:,.2f}</div>
-                <div class="label">Total Op. Expenses</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_profit_overall:
-            card_class = "green" if net_profit >= 0 else "red"
-            st.markdown(f"""
-            <div class="report-card {card_class}">
-                <div class="value">₦{net_profit:,.2f}</div>
-                <div class="label">Net Profit/Loss</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.subheader("Breakdown")
-        st.write(f"**Gross Profit:** ₦{gross_profit:,.2f}")
-        st.write(f"**Net Profit/Loss:** ₦{net_profit:,.2f}")
-
-        # You might want to generate a DataFrame for this summary if needed for download
-        overall_profit_loss_data = {
-            'Metric': ['Total Revenue', 'Total Cost of Goods Sold', 'Gross Profit', 'Total Operating Expenses', 'Net Profit/Loss'],
-            'Amount (₦)': [total_revenue_overall, total_cogs_overall, gross_profit, total_operating_expenses_overall, net_profit]
-        }
-        overall_profit_loss_df = pd.DataFrame(overall_profit_loss_data)
-        st.dataframe(overall_profit_loss_df, hide_index=True, use_container_width=True)
-
-        csv_overall_pl = to_excel(overall_profit_loss_df)
+    with col_export1:
         st.download_button(
-            label="Download Overall Profit/Loss Report as Excel",
-            data=csv_overall_pl,
-            file_name=f"overall_profit_loss_report_{st.session_state.current_store.replace(' ', '_')}.xlsx",
+            label="Download Inventory (Excel)",
+            data=to_excel(st.session_state.inventory),
+            file_name=f"full_inventory_report_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_overall_pl_excel"
+            key="download_inventory"
         )
-        
-        if total_revenue_overall == 0 and total_cogs_overall == 0 and total_operating_expenses_overall == 0:
-            st.info(f"No financial data (sales or expenses) recorded yet for {st.session_state.current_store} to generate an overall profit/loss report.")
-
-    with report_tabs[4]: # NEW: Group Report (All Stores)
-        st.subheader("Group Report (All Stores)")
-        
-        # Calculate total revenue across all stores
-        total_revenue_group = st.session_state.transactions[st.session_state.transactions['Type'] == 'Sale']['Revenue (₦)'].sum()
-        
-        # Calculate total cost of goods sold across all stores
-        total_cogs_group = st.session_state.transactions[st.session_state.transactions['Type'] == 'Sale']['Cost of Goods Sold (₦)'].sum()
-
-        # Calculate total operating expenses across all stores
-        total_operating_expenses_group = st.session_state.operating_expenses['Amount (₦)'].sum()
-
-        gross_profit_group = total_revenue_group - total_cogs_group
-        net_profit_group = gross_profit_group - total_operating_expenses_group
-
-        col_rev_group, col_cogs_group, col_exp_group, col_profit_group = st.columns(4)
-
-        with col_rev_group:
-            st.markdown(f"""
-            <div class="report-card blue">
-                <div class="value">₦{total_revenue_group:,.2f}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_cogs_group:
-            st.markdown(f"""
-            <div class="report-card red">
-                <div class="value">₦{total_cogs_group:,.2f}</div>
-                <div class="label">Total Group COGS</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_exp_group:
-            st.markdown(f"""
-            <div class="report-card red">
-                <div class="value">₦{total_operating_expenses_group:,.2f}</div>
-                <div class="label">Total Op. Expenses</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_profit_group:
-            card_class = "green" if net_profit_group >= 0 else "red"
-            st.markdown(f"""
-            <div class="report-card {card_class}">
-                <div class="value">₦{net_profit_group:,.2f}</div>
-                <div class="label">Total Group Net Profit/Loss</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.subheader("Group Breakdown")
-        st.write(f"**Total Group Gross Profit:** ₦{gross_profit_group:,.2f}")
-        st.write(f"**Total Group Net Profit/Loss:** ₦{net_profit_group:,.2f}")
-
-        # DataFrame for Group Report download
-        group_profit_loss_data = {
-            'Metric': ['Total Group Revenue', 'Total Group Cost of Goods Sold', 'Total Group Gross Profit', 'Total Group Operating Expenses', 'Total Group Net Profit/Loss'],
-            'Amount (₦)': [total_revenue_group, total_cogs_group, gross_profit_group, total_operating_expenses_group, net_profit_group]
-        }
-        group_profit_loss_df = pd.DataFrame(group_profit_loss_data)
-        st.dataframe(group_profit_loss_df, hide_index=True, use_container_width=True)
-
-        csv_group_pl = to_excel(group_profit_loss_df)
+    with col_export2:
         st.download_button(
-            label="Download Group Profit/Loss Report as Excel",
-            data=csv_group_pl,
-            file_name="group_profit_loss_report_all_stores.xlsx",
+            label="Download All Transactions (Excel)",
+            data=to_excel(st.session_state.transactions),
+            file_name=f"all_transactions_report_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_group_pl_excel"
+            key="download_all_transactions"
+        )
+    with col_export3:
+        st.download_button(
+            label="Download All Expenses (Excel)",
+            data=to_excel(st.session_state.operating_expenses),
+            file_name=f"all_expenses_report_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_all_expenses"
         )
 
-        if total_revenue_group == 0 and total_cogs_group == 0 and total_operating_expenses_group == 0:
-            st.info("No financial data (sales or expenses) recorded across all stores yet to generate a group profit/loss report.")
+    st.subheader("Receipt History")
+    if st.session_state.receipt_history:
+        # Display the last few receipts or provide a way to select
+        selected_receipt_index = st.selectbox("Select Receipt to View:", 
+                                            options=range(len(st.session_state.receipt_history)),
+                                            format_func=lambda x: f"Receipt {x+1} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", # Placeholder for dynamic date
+                                            index=len(st.session_state.receipt_history) - 1, # Default to latest
+                                            key="receipt_history_selector")
+        st.markdown(st.session_state.receipt_history[selected_receipt_index], unsafe_allow_html=True)
+    else:
+        st.info("No receipts have been generated yet.")
 
 
 elif selected_page == "About":
-    st.markdown('<div class="section-header">ℹ️ About This Application</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-header">ℹ️ About</div>', unsafe_allow_html=True)
     st.write("""
-    This is a simple inventory management application built with Streamlit, designed for a small grocery store.
-    It allows for basic product tracking, stock adjustments, and provides low stock alerts.
+    This **Grocery Inventory Management** application is designed to help businesses
+    efficiently manage their product stock, track sales and purchases, monitor operating
+    expenses, and generate insightful reports.
 
-    **Features:**
-    * **Multi-Store Support:** Manage inventory, sales, and expenses for multiple store locations.
-    * **Dashboard:** Overview of inventory status with key metrics and visual insights, including stock health and category distribution, specific to the selected store.
-    * **Manage Products:** Add new products, view/edit existing ones, and **bulk upload purchases** in an an interactive table, all filtered by the selected store. Supports 'Unit of Measure', 'Reorder Point', 'Selling Price', 'Cost Price', and 'Expiry Date'.
-    * **Point of Sale (POS):** A dedicated interface for customer sales, allowing multiple item selection, automatic total calculation, and receipt generation with print/PDF options, specific to the selected store.
-    * **Record Transactions:** Log individual sales and stock deliveries (purchases), including updating cost prices for purchases, specific to the selected store.
-    * **Operating Expenses:** A new section to track and report daily operational expenses like rent, salaries, utilities, etc., specific to the selected store.
-    * **Expiry Alerts:** Identifies products that have expired or are nearing their expiry date, with customizable alert periods per product, specific to the selected store.
-    * **Low Stock Alerts:** Identifies products needing reordering, categorized by urgency (Low and Critical Stock), specific to the selected store.
-    * **Analytics & Reports:** Generate comprehensive reports on sales, cost of goods bought, and profit/loss, including:
+    **Key Features:**
+    * **Multi-Store Support:** Manage inventory and transactions for multiple store locations.
+    * **Product Management:** Add, view, edit, and delete product details including SKU,
+        name, category, quantity, unit, selling price, cost price, reorder point, and expiry date.
+    * **Transaction Logging:** Record all sales and stock deliveries (purchases),
+        including updating cost prices for purchases, specific to the selected store.
+    * **Operating Expenses:** A new section to track and report daily operational expenses
+        like rent, salaries, utilities, etc., specific to the selected store.
+    * **Expiry Alerts:** Identifies products that have expired or are nearing their
+        expiry date, with customizable alert periods per product, specific to the selected store.
+    * **Low Stock Alerts:** Identifies products needing reordering, categorized by urgency
+        (Low and Critical Stock), specific to the selected store.
+    * **Analytics & Reports:** Generate comprehensive reports on sales, cost of goods bought,
+        and profit/loss, including:
         * Individual store reports (Sales, Cost of Goods Bought, Cost of Sales/Profit for current store).
         * An **Overall Profit/Loss Report** for the currently selected store.
-        * A **Group Report** consolidating Sales, Cost of Sales, Gross Profit, and Net Profit across **all** stores.
+        * A **Group Report** consolidating Sales, Cost of Sales, Gross Profit, and Net Profit
+            across **all** stores.
     * With the ability to download data in Excel format for all reports.
 
     **Note:** This application uses Streamlit's `st.session_state` for data persistence, meaning data
