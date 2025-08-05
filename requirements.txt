@@ -1,5 +1,5 @@
 streamlit
 pandas
-barcode
+python-barcode
 xlsxwriter
 setuptools
